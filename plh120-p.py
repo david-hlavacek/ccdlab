@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 
-import os
-import sys
 import datetime
+import numpy as np
 import re
 
-from daemon import SimpleFactory, SimpleProtocol
-from command import Command
-from daemon import catch
+from daemon import SimpleFactory, SimpleProtocol, catch
 
 
 class DaemonProtocol(SimpleProtocol):
@@ -19,114 +16,61 @@ class DaemonProtocol(SimpleProtocol):
         if cmd is None:
             return
         obj = self.object
-        daemon = self.factory
         hw = obj['hw']
         string = string.strip()
         STRING = string.upper()
         while True:
             if string == 'get_status':
-                self.message('status hw_connected=%s Current_Limit=%g Voltage=%g CurrentActual=%g VoltageActual=%g Vstatus=%g' %
-                             (self.object['hw_connected'], self.object['Current_Limit'], self.object['Voltage'], self.object['CurrentActual'], self.object['VoltageActual'], self.object['Vstatus']))
-                break
-            if STRING in ['RESET','*RST'] :
-                self.sendCommand('*RST', keep=True)
-                break
-            if STRING in ['IDN','*IDN?']:
-                self.sendCommand('*IDN?', keep=True)
-                break
-            if STRING in ['CONFIG','CONFIG?'] :
-                self.sendCommand('CONFIG?', keep=True)
-                break
-            if STRING in ['GET_VOLTAGE', 'V1?']:
-                self.sendCommand('V1?', keep=True)
-                break
-            if STRING in ['GET_VOLTAGEACTUAL', 'V1O?']:
-                self.sendCommand('V1O?', keep=True)
-                break
-            if STRING in ['GET_CURRENTACTUAL','I1O?']:
-                self.sendCommand('I1O?', keep=True)
-                break
-            if STRING in ['GET_VOLTAGE_LIMIT','OVP1?']:
-                self.sendCommand('OVP1?', keep=True)
-                break
-            if STRING in ['GET_CURRENT_LIMIT','I1?']:
-                self.sendCommand('I1?', keep=True)
-                break
-            if STRING in ['STEP_SIZE_VOLTAGE','DELTAV1?']:
-                self.sendCommand('DELTAV1?', keep=True)
-                break
-            if STRING in ['GET_CURRENT_TRIP','OCP1?']:
-                self.sendCommand('OCP1?', keep=True)
-                break
-            if STRING  in ['ENGAGE']:
-                self.sendCommand('OP1 1', keep=False)
-                obj['Vstatus'] =  1
-                break
-            if STRING in ['DISENGAGE']:
-                self.sendCommand('OP1 0', keep=False)
-                obj['Vstatus'] =  0
-                break
-            if STRING in ['GET_ON_OFF', 'OP1?']:
-                self.sendCommand('OP1?', keep=True)
+                self.message('status hw_connected=%s Voltage=%g VoltageActual=%g Current_Limit=%g CurrentActual=%g Vstatus=%i OVP1=%s OCP1=%s' %
+                             (self.object['hw_connected'],
+                              self.object['V1'],
+                              self.object['V1O'],
+                              self.object['I1'],
+                              self.object['I1O'],
+                              self.object['VOut1'],
+                              self.object['OVP1'],
+                              self.object['OCP1'],))
                 break
 
-            regex = re.compile(r'(\:?(V1|SET_VOLTAGE) (?P<val>(\d+\.\d+?$|\d+?$)))')
-            match = re.match(regex, STRING)
+            regex0 = re.compile(r'\:?ENGAGE')
+            regex1 = re.compile(r'\:?OP1.1')
+            match = re.match(regex0, STRING)
+            if not match:
+                match = re.match(regex1, STRING)
             if match:
-                hw.messageAll('V1 ' + match.group('val') + '\n', type='hw', keep=False, source=self.name)
+                hw.messageAll('OP1 1\n', type='hw', keep=False, source=self.name)
+                obj['Vstatus'] = 1
                 break
 
-            regex = re.compile(r'(\:?(I1|SET_Current_Limit) (?P<val>(\d+\.\d+?$|\d+?$)))')
-            match = re.match(regex, STRING)
+            regex0 = re.compile(r'\:?DISENGAGE')
+            regex1 = re.compile(r'\:?OP1.0')
+            match = re.match(regex0, STRING)
+            if not match:
+                match = re.match(regex1, STRING)
             if match:
-                hw.messageAll('I1 ' + match.group('val') + '\n', type='hw', keep=False, source=self.name)
-                break
-
-            regex = re.compile(r'(\:?(OVP1|SET_VOLTAGE_LIMIT) (?P<val>(\d+\.\d+?$|\d+?$)))')
-            match = re.match(regex, STRING)
-            if match:
-                hw.messageAll('OVP1 ' + match.group('val') + '\n', type='hw', keep=False, source=self.name)
-                break
-
-            regex = re.compile(r'(\:?(DELTAV1|SET_STEP_SIZE_VOLTAGE) (?P<val>(\d+\.\d+?$|\d+?$)))')
-            match = re.match(regex, STRING)
-            if match:
-                hw.messageAll('DELTAV1 ' + match.group('val') + '\n', type='hw', keep=False, source=self.name)
-                break
-
-            regex = re.compile(r'(\:?(INCV1|INCREMENT_VOLTAGE) (?P<val>(\d+\.\d+?$|\d+?$)))')
-            match = re.match(regex, STRING)
-            if match:
-                hw.messageAll('INCV1 ' + '\n', type='hw', keep=False, source=self.name)
-                break
-
-            regex = re.compile(r'(\:?(DECV1|DECREMENT_VOLTAGE) (?P<val>(\d+\.\d+?$|\d+?$)))')
-            match = re.match(regex, STRING)
-            if match:
-                hw.messageAll('DECV1 ' + '\n', type='hw', keep=False, source=self.name)
+                hw.messageAll('OP1 0\n', type='hw', keep=False, source=self.name)
+                obj['Vstatus'] = 0
                 break
 
             if STRING[-1] == '?':
-                self.sendCommand(STRING, keep=True)
+                hw.messageAll(string, type='hw', keep=True, source=self.name)
             else:
-                self.sendCommand(STRING, keep=False)
-
+                hw.messageAll(string, type='hw', keep=False, source=self.name)
             break
-
-    @catch
-    def sendCommand(self, string, keep=False):
-        obj = self.object  # Object holding the state
-        hw = obj['hw']  # HW factory
-        hw.messageAll(string, type='hw', keep=keep, source=self.name)
 
 
 class plh120_Protocol(SimpleProtocol):
     _debug = False  # Display all traffic for debug purposes
-    _refresh = 0.1
+    _refresh = 0.01
 
     def __init__(self):
         SimpleProtocol.__init__(self)
         self.commands = []  # Queue of command sent to the device which will provide replies, each entry is a dict with keys "cmd","source","timeStamp"
+        self.status_commands = ['I1?', 'V1?',
+                                'I1O?', 'V1O?',
+                                'OP1?', 'OVP1?', 'OCP1?',
+                                'CONFIG?', ]
+        #self.status_commands = []
         self.name = 'hw'
         self.type = 'hw'
         self.lastAutoRead = datetime.datetime.utcnow()
@@ -138,99 +82,112 @@ class plh120_Protocol(SimpleProtocol):
         # We will set this flag when we receive any reply from the device
         self.object['hw_connected'] = 1
         SimpleProtocol.message(self, '*RST')
-        SimpleProtocol.message(self, '*IDN?')
 
     @catch
     def connectionLost(self, reason):
-        self.object['hw_connected'] = 0
+        self.commands = []
         SimpleProtocol.connectionLost(self, reason)
+        resetObjStatus(self.object)
 
     @catch
     def processMessage(self, string):
         obj = self.object  # Object holding the state
-        daemon = obj['daemon']
         if self._debug:
-            print 'PLH120-P >> %s' % string
-            #print 'commands Q:', self.commands
+            print('PLH120-P >> %s' % string)
         # Update the last reply timestamp
         obj['hw_last_reply_time'] = datetime.datetime.utcnow()
         obj['hw_connected'] = 1
         # Process the device reply
         while len(self.commands):
+            ccmd = self.commands[0]['cmd'].decode()
             # We have some sent commands in the queue - let's check what was the oldest one
-            if self.commands[0]['cmd'] == '*RST' and self.commands[0]['source'] == 'itself':
-                # not used at the moment
-                pass
-                break
-            if self.commands[0]['cmd'] == '*IDN?' and self.commands[0]['source'] == 'itself':
-                # Example of how to broadcast some message to be printed on screen and stored to database
-                # daemon.log(string)
-                pass
-                break
-            if self.commands[0]['cmd'] == 'I1?' and self.commands[0]['source'] == 'itself':
+            br = False
+            if ccmd == 'I1?':
                 obj['Current_Limit'] = float(string[3:-1])
+                br = True
                 break
-            if self.commands[0]['cmd'] == 'V1?' and self.commands[0]['source'] == 'itself':
+            if ccmd == 'V1?':
                 obj['Voltage'] = float(string[3:-1])
+                br = True
                 break
-            if self.commands[0]['cmd'] == 'OVP1?' and self.commands[0]['source'] == 'itself':
-                obj['OVP1'] = float(string[3:-1])
-                break
-            if self.commands[0]['cmd'] == 'DELTAV1?' and self.commands[0]['source'] == 'itself':
-                obj['DELTAV1'] = float(string[7:-1])
-                break
-            if self.commands[0]['cmd'] == 'V1O?' and self.commands[0]['source'] == 'itself':
+            if ccmd == 'V1O?':
                 obj['VoltageActual'] = float(string[0:-2])
+                br = True
                 break
-            if self.commands[0]['cmd'] == 'I1O?' and self.commands[0]['source'] == 'itself':
+            if ccmd == 'I1O?':
                 obj['CurrentActual'] = float(string[0:-2])
+                br = True
                 break
-           # if self.commands[0]['cmd'] == 'ENGAGE' and self.commands[0]['source'] == 'itself':
-           #     obj['Vstatus'] =  1
-		#break
-            if not self.commands[0]['source'] == 'itself':
-                # in case the origin of the query was not itself, forward the answer to the origin
-                daemon.messageAll(string, self.commands[0]['source'])
+            if ccmd == 'OP1?':
+                obj['VOut1'] = int(string[0])
+                br = True
                 break
+            if ccmd == 'OVP1?':
+                obj['OVP1'] = float(string[:-1].split()[0])
+                br = True
+                break
+            if ccmd == 'OCP1?':
+                obj['OCP1'] = float(string[:-1].split()[0])
+                br = True
+                break                
+            if br:
+                break
+
+            # some more commands
             break
         else:
             return
+        if not self.commands[0]['source'] == 'itself':
+            # in case the origin of the query was not itself, forward the answer to the origin
+            obj['daemon'].messageAll(string, self.commands[0]['source'])
         self.commands.pop(0)
 
     @catch
-    def message(self, string, keep=False, source='itself'):
-        """
-        Send the message to the controller. If keep=True, append the command name to
-        internal queue so that we may properly recognize the reply
-        """
-        if keep:
-            self.commands.append({'cmd': string,
-                                  'source': source,
-                                  'timeStamp': datetime.datetime.utcnow(),
-                                  'keep': keep})
-            SimpleProtocol.message(self, '%s' % string)
-        else:
-            SimpleProtocol.message(self, string)
-
-    @catch
     def update(self):
-        if (datetime.datetime.utcnow() - obj['hw_last_reply_time']).total_seconds() > 10:
-            # We did not get any reply from device during last 10 seconds, probably it is disconnected?
-            self.object['hw_connected'] = 0
-            # TODO: should we clear the command queue here?
+        if self._debug:
+            print('--------self.commands--------------')
+            for cc in self.commands:
+                print(cc)
+            print('----------------------')
         # first check if device is hw_connected
         if self.object['hw_connected'] == 0:
             # if not connected do not send any commands
             return
-        elif (datetime.datetime.utcnow() - self.lastAutoRead).total_seconds() > 2. and len(self.commands) == 0:
-            # Request the hardware state from the device
-            self.message('I1?', keep=True, source='itself')
-            self.message('V1?', keep=True, source='itself')
-            self.message('I1O?', keep=True, source='itself')
-            self.message('V1O?', keep=True, source='itself')
-            self.message('CONFIG?', keep=True, source='itself')
-            self.message('*IDN?', keep=True, source='itself')
-            self.lastAutoRead = datetime.datetime.utcnow()
+
+        if len(self.commands) and not self.commands[0]['sent']:
+            SimpleProtocol.message(self, self.commands[0]['cmd'])
+            if not self.commands[0]['keep']:
+                self.commands.pop(0)
+            else:
+                self.commands[0]['sent'] = True
+        elif not len(self.commands):
+            for k in self.status_commands:
+                self.commands.append({'cmd': k.encode('ascii'), 'source': 'itself', 'keep': True, 'sent': False})
+
+    @catch
+    def message(self, string, keep=False, source='itself'):
+        """
+        Send the message to the controller. If keep=True, expect reply
+        """
+        n = 0
+        for cc in self.commands:
+            if not cc['sent']:
+                break
+            n += 1
+        if self._debug:
+            print('cmd', string, 'from', source, 'will be inserted at', n)
+        self.commands.insert(n, {'cmd': string, 'source': source, 'keep': keep, 'sent': False})
+
+
+def resetObjStatus(obj):
+    obj['hw_connected'] = 0
+    obj['I1'] = np.nan
+    obj['V1'] = np.nan
+    obj['I1O'] = np.nan
+    obj['V1O'] = np.nan
+    obj['VOut1'] = 0
+    obj['OVP1'] = np.nan
+    obj['OCP1'] = np.nan    
 
 
 if __name__ == '__main__':
@@ -244,12 +201,9 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
     # Object holding actual state and work logic.
     # May be anything that will be passed by reference - list, dict, object etc
-    obj = {'hw_connected': 0,
-           'Current_Limit': 0,
-           'Voltage': 0,
-           'CurrentActual': 0,
-           'VoltageActual': 0,
-           'Vstatus': 0}
+    obj = {}
+    resetObjStatus(obj)
+
     # Factories for daemon and hardware connections
     # We need two different factories as the protocols are different
     daemon = SimpleFactory(DaemonProtocol, obj)
